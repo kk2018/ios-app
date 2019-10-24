@@ -15,7 +15,8 @@ class DatabaseUpgradeViewController: UIViewController {
             let currentVersion = DatabaseUserDefault.shared.databaseVersion
 
             TaskDatabase.shared.initDatabase()
-            MixinDatabase.shared.initDatabase()
+            MixinDatabase.shared.initDatabase(clearSentSenderKey: DatabaseUserDefault.shared.clearSentSenderKey)
+            DatabaseUserDefault.shared.clearSentSenderKey = false
 
             if currentVersion < 3 {
                 if let currency = WalletUserDefault.shared.currencyCode, !currency.isEmpty {
@@ -26,6 +27,9 @@ class DatabaseUpgradeViewController: UIViewController {
                         }
                     })
                 }
+            }
+            if currentVersion < 4 {
+                ConcurrentJobQueue.shared.addJob(job: RefreshAssetsJob())
             }
 
             DatabaseUserDefault.shared.forceUpgradeDatabase = false

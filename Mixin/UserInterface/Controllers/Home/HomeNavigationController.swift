@@ -19,7 +19,7 @@ class HomeNavigationController: UINavigationController {
         if let web = activeWebViewController {
             return web
         } else {
-            return super.childForStatusBarStyle
+            return super.childForStatusBarHidden
         }
     }
     
@@ -108,9 +108,6 @@ extension HomeNavigationController {
             Crashlytics.sharedInstance().setUserName(account.full_name)
             Crashlytics.sharedInstance().setUserEmail(account.identity_number)
             Crashlytics.sharedInstance().setObjectValue(Bundle.main.bundleIdentifier ?? "", forKey: "Package")
-        }
-        if AccountUserDefault.shared.hasRestoreFilesAndVideos {
-            BackupJobQueue.shared.addJob(job: RestoreJob())
         }
     }
     

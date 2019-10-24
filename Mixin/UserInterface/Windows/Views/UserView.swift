@@ -232,6 +232,9 @@ class UserView: CornerView {
             alc.addAction(UIAlertAction(title: R.string.localizable.profile_search_conversation(), style: .default, handler: { (action) in
                 self.searchConversationAction()
             }))
+            alc.addAction(UIAlertAction(title: R.string.localizable.chat_shared_media(), style: .default, handler: { (action) in
+                self.showSharedMediaAction()
+            }))
 
             if user.isSelfBot {
                 alc.addAction(UIAlertAction(title: Localized.CHAT_MENU_TRANSFER, style: .default, handler: { (action) in
@@ -342,13 +345,20 @@ class UserView: CornerView {
         let container = ContainerViewController.instance(viewController: vc, title: user.fullName)
         UIApplication.homeNavigationController?.pushViewController(container, animated: true)
     }
-
+    
+    func showSharedMediaAction() {
+        let vc = R.storyboard.chat.shared_media()!
+        vc.conversationId = conversationId
+        let container = ContainerViewController.instance(viewController: vc, title: R.string.localizable.chat_shared_media())
+        UIApplication.homeNavigationController?.pushViewController(container, animated: true)
+    }
+    
     @IBAction func transferAction(_ sender: Any) {
         superView?.dismissPopupControllerAnimated()
 
         let viewController: UIViewController
         if AccountAPI.shared.account?.has_pin ?? false {
-            viewController = SendViewController.instance(asset: nil, type: .contact(user))
+            viewController = TransferOutViewController.instance(asset: nil, type: .contact(user))
         } else {
             viewController = WalletPasswordViewController.instance(dismissTarget: .transfer(user: user))
         }

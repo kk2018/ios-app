@@ -111,18 +111,28 @@ class GroupView: CornerView {
         avatarImageView.image = R.image.ic_conversation_group()
         
         let conversationId = conversation.conversationId
-        let participantIds = conversationResponse.participants.prefix(4).map { $0.userId }
+        let conversationResponse = self.conversationResponse
 
         DispatchQueue.global().async { [weak self] in
-            switch UserAPI.shared.showUsers(userIds: participantIds) {
-            case let .success(users):
-                let participants = users.map { ParticipantUser(conversationId: conversationId, role: "", userId: $0.userId, userFullName: $0.fullName, userAvatarUrl: $0.avatarUrl, userIdentityNumber: $0.identityNumber) }
+            func makeGroupIcon(participants: [ParticipantUser]) {
                 let groupImage = GroupIconMaker.make(participants: participants) ?? R.image.ic_conversation_group()
                 DispatchQueue.main.async {
                     self?.avatarImageView.image = groupImage
                 }
-            case let .failure(error):
-                showAutoHiddenHud(style: .error, text: error.localizedDescription)
+            }
+
+            if let participants = conversationResponse?.participants {
+                let participantIds = participants.prefix(4).map { $0.userId }
+                switch UserAPI.shared.showUsers(userIds: participantIds) {
+                case let .success(users):
+                    let participants = users.map { ParticipantUser(conversationId: conversationId, role: "", userId: $0.userId, userFullName: $0.fullName, userAvatarUrl: $0.avatarUrl, userIdentityNumber: $0.identityNumber) }
+                    makeGroupIcon(participants: participants)
+                case let .failure(error):
+                    showAutoHiddenHud(style: .error, text: error.localizedDescription)
+                }
+            } else {
+                let participants = ParticipantDAO.shared.getGroupIconParticipants(conversationId: conversationId)
+                makeGroupIcon(participants: participants)
             }
         }
     }
@@ -139,6 +149,9 @@ class GroupView: CornerView {
         }))
         alc.addAction(UIAlertAction(title: R.string.localizable.profile_search_conversation(), style: .default, handler: { (action) in
             self.searchConversationAction()
+        }))
+        alc.addAction(UIAlertAction(title: R.string.localizable.chat_shared_media(), style: .default, handler: { (action) in
+            self.showSharedMediaAction()
         }))
         if isAdmin {
             alc.addAction(UIAlertAction(title: Localized.GROUP_MENU_ANNOUNCEMENT, style: .default, handler: { (action) in
@@ -264,6 +277,13 @@ extension GroupView {
         let vc = InConversationSearchViewController()
         vc.load(group: conversation)
         let container = ContainerViewController.instance(viewController: vc, title: conversation.name)
+        UIApplication.homeNavigationController?.pushViewController(container, animated: true)
+    }
+    
+    func showSharedMediaAction() {
+        let vc = R.storyboard.chat.shared_media()!
+        vc.conversationId = conversation.conversationId
+        let container = ContainerViewController.instance(viewController: vc, title: R.string.localizable.chat_shared_media())
         UIApplication.homeNavigationController?.pushViewController(container, animated: true)
     }
     

@@ -16,6 +16,7 @@ class ConversationViewController: UIViewController {
     @IBOutlet weak var scrollToBottomButton: UIButton!
     @IBOutlet weak var unreadBadgeLabel: UILabel!
     @IBOutlet weak var inputWrapperView: UIView!
+    @IBOutlet weak var inputWrapperTopShadowView: TopShadowView!
     @IBOutlet weak var avatarImageView: AvatarImageView!
     @IBOutlet weak var subtitleLabel: UILabel!
     @IBOutlet weak var loadingView: ActivityIndicatorView!
@@ -60,6 +61,7 @@ class ConversationViewController: UIViewController {
     private(set) lazy var imagePickerController = ImagePickerController(initialCameraPosition: .rear, cropImageAfterPicked: false, parent: self, delegate: self)
     private lazy var userWindow = UserWindow.instance()
     private lazy var groupWindow = GroupWindow.instance()
+    private lazy var userHandleViewController = R.storyboard.chat.user_handle()!
     
     private lazy var strangerTipsView: StrangerTipsView = {
         let view = StrangerTipsView()
@@ -134,7 +136,7 @@ class ConversationViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(menuControllerDidHideMenu(_:)), name: UIMenuController.didHideMenuNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(participantDidChange(_:)), name: .ParticipantDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didAddMessageOutOfBounds(_:)), name: ConversationDataSource.didAddMessageOutOfBoundsNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(audioManagerWillPlayNextNode(_:)), name: AudioManager.willPlayNextNodeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(audioManagerWillPlayNextNode(_:)), name: AudioManager.willPlayNextNotification, object: nil)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -196,7 +198,6 @@ class ConversationViewController: UIViewController {
         SendMessageService.shared.sendReadMessages(conversationId: conversationId, force: true)
     }
     
-    @available(iOS 11.0, *)
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         updateNavigationBarHeightAndTableViewTopInset()
@@ -368,14 +369,12 @@ class ConversationViewController: UIViewController {
                     quotingMessageId = message.messageId
                     reloadWithMessageIdAndBlinkTheCell(quoteMessageId, upwards: false)
                 }
-            } else if message.category.hasSuffix("_AUDIO"), message.mediaStatus == MediaStatus.DONE.rawValue || message.mediaStatus == MediaStatus.READ.rawValue, let filename = message.mediaUrl {
-                let url = MixinFile.url(ofChatDirectory: .audios, filename: filename)
-                if AudioManager.shared.playingNode?.message.messageId == message.messageId, AudioManager.shared.player?.status == .playing {
+            } else if message.category.hasSuffix("_AUDIO"), message.mediaStatus == MediaStatus.DONE.rawValue || message.mediaStatus == MediaStatus.READ.rawValue {
+                if AudioManager.shared.playingMessage?.messageId == message.messageId, AudioManager.shared.player?.status == .playing {
                     AudioManager.shared.pause()
                 } else {
                     (cell as? AudioMessageCell)?.updateUnreadStyle()
-                    let node = AudioManager.Node(message: message, path: url.path)
-                    AudioManager.shared.play(node: node)
+                    AudioManager.shared.play(message: message)
                 }
             } else if (isImageOrVideo && mediaStatusIsReady) || message.category.hasSuffix("_LIVE"), let item = GalleryItem(message: message), let cell = cell as? PhotoRepresentableMessageCell {
                 adjustTableViewContentOffsetWhenInputWrapperHeightChanges = false
@@ -418,7 +417,7 @@ class ConversationViewController: UIViewController {
                 }
             } else if message.category == MessageCategory.APP_CARD.rawValue, let action = message.appCard?.action {
                 conversationInputViewController.dismiss()
-                open(url: action)
+                openAction(action: action.absoluteString)
             } else {
                 conversationInputViewController.dismiss()
             }
@@ -545,6 +544,20 @@ class ConversationViewController: UIViewController {
         }
     }
     
+    func inputTextViewDidChange(_ textView: UITextView) {
+        userHandleViewController.reload(with: textView.text) { (hasContent) in
+            self.setUserHandleHidden(!hasContent)
+        }
+    }
+    
+    func inputUserHandle(with user: User) {
+        let text = "@" + user.identityNumber + " "
+        conversationInputViewController.textView.text = text
+        userHandleViewController.reload(with: text) { (hasContent) in
+            self.setUserHandleHidden(true)
+        }
+    }
+    
     func documentAction() {
         let vc = UIDocumentPickerViewController(documentTypes: ["public.item", "public.content"], in: .import)
         vc.delegate = self
@@ -558,7 +571,7 @@ class ConversationViewController: UIViewController {
         }
         let viewController: UIViewController
         if AccountAPI.shared.account?.has_pin ?? false {
-            viewController = SendViewController.instance(asset: nil, type: .contact(user))
+            viewController = TransferOutViewController.instance(asset: nil, type: .contact(user))
         } else {
             viewController = WalletPasswordViewController.instance(dismissTarget: .transfer(user: user))
         }
@@ -707,39 +720,6 @@ extension ConversationViewController: ConversationTableViewActionDelegate {
         }
         return message.allowedActions.contains(action)
     }
-
-    private func deleteForMe(message: MessageItem, forIndexPath indexPath: IndexPath) {
-        dataSource?.queue.async { [weak self] in
-            if MessageDAO.shared.deleteMessage(id: message.messageId) {
-                ReceiveMessageService.shared.stopRecallMessage(messageId: message.messageId, category: message.category, conversationId: message.conversationId, mediaUrl: message.mediaUrl)
-            }
-            DispatchQueue.main.sync {
-                guard let weakSelf = self else {
-                    return
-                }
-                _ = weakSelf.dataSource?.removeViewModel(at: indexPath)
-                weakSelf.tableView.reloadData()
-                weakSelf.tableView.setFloatingHeaderViewsHidden(true, animated: true)
-            }
-        }
-    }
-
-    private func deleteForEveryone(message: MessageItem) {
-        SendMessageService.shared.recallMessage(messageId: message.messageId, category: message.category, mediaUrl: message.mediaUrl, conversationId: message.conversationId, status: message.status, sendToSession: true)
-    }
-
-    private func showRecallTips(message: MessageItem) {
-        let alc = UIAlertController(title: R.string.localizable.chat_delete_tip(), message: "", preferredStyle: .alert)
-        alc.addAction(UIAlertAction(title: R.string.localizable.action_learn_more(), style: .default, handler: { (_) in
-            CommonUserDefault.shared.isRecallTips = true
-            UIApplication.shared.openURL(url: "https://mixinmessenger.zendesk.com/hc/articles/360028209571")
-        }))
-        alc.addAction(UIAlertAction(title: Localized.DIALOG_BUTTON_OK, style: .default, handler: { (_) in
-            CommonUserDefault.shared.isRecallTips = true
-            self.deleteForEveryone(message: message)
-        }))
-        present(alc, animated: true, completion: nil)
-    }
     
     func conversationTableView(_ tableView: ConversationTableView, didSelectAction action: ConversationTableView.Action, forIndexPath indexPath: IndexPath) {
         guard let viewModel = dataSource?.viewModel(for: indexPath) else {
@@ -753,23 +733,18 @@ extension ConversationViewController: ConversationTableViewActionDelegate {
             }
         case .delete:
             conversationInputViewController.textView.resignFirstResponder()
-            (viewModel as? AttachmentLoadingViewModel)?.cancelAttachmentLoading(isTriggeredByUser: true)
-            if viewModel.message.messageId == AudioManager.shared.playingNode?.message.messageId {
-                AudioManager.shared.stop()
-            }
-
             let controller = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
             if message.canRecall() {
                 controller.addAction(UIAlertAction(title: Localized.ACTION_DELETE_EVERYONE, style: .destructive, handler: { (_) in
                     if CommonUserDefault.shared.isRecallTips {
-                        self.deleteForEveryone(message: message)
+                        self.deleteForEveryone(viewModel: viewModel)
                     } else {
-                        self.showRecallTips(message: message)
+                        self.showRecallTips(viewModel: viewModel)
                     }
                 }))
             }
             controller.addAction(UIAlertAction(title: Localized.ACTION_DELETE_ME, style: .destructive, handler: { (_) in
-                self.deleteForMe(message: message, forIndexPath: indexPath)
+                self.deleteForMe(viewModel: viewModel)
             }))
             controller.addAction(UIAlertAction(title: Localized.DIALOG_BUTTON_CANCEL, style: .cancel, handler: nil))
             self.present(controller, animated: true, completion: nil)
@@ -922,10 +897,7 @@ extension ConversationViewController: AppButtonGroupMessageCellDelegate {
         guard let indexPath = tableView.indexPath(for: cell), let appButtons = dataSource?.viewModel(for: indexPath)?.message.appButtons, index < appButtons.count else {
             return
         }
-        let appButton = appButtons[index]
-        if !appButton.action.isEmpty, let url = URL(string: appButton.action) {
-            open(url: url)
-        }
+        openAction(action: appButtons[index].action)
     }
     
 }
@@ -933,7 +905,7 @@ extension ConversationViewController: AppButtonGroupMessageCellDelegate {
 // MARK: - AttachmentLoadingMessageCellDelegate
 extension ConversationViewController: AttachmentLoadingMessageCellDelegate {
     
-    func attachmentLoadingCellDidSelectNetworkOperation(_ cell: MessageCell & AttachmentLoadingMessageCell) {
+    func attachmentLoadingCellDidSelectNetworkOperation(_ cell: UITableViewCell & AttachmentLoadingMessageCell) {
         guard let indexPath = tableView.indexPath(for: cell), let viewModel = dataSource?.viewModel(for: indexPath) as? MessageViewModel & AttachmentLoadingViewModel else {
             return
         }
@@ -1020,7 +992,7 @@ extension ConversationViewController: UIDocumentInteractionControllerDelegate {
 // MARK: - GalleryViewControllerDelegate
 extension ConversationViewController: GalleryViewControllerDelegate {
     
-    func galleryViewController(_ viewController: GalleryViewController, cellFor item: GalleryItem) -> PhotoRepresentableMessageCell? {
+    func galleryViewController(_ viewController: GalleryViewController, cellFor item: GalleryItem) -> GalleryTransitionSource? {
         return visiblePhotoRepresentableCell(of: item.messageId)
     }
     
@@ -1264,6 +1236,33 @@ extension ConversationViewController {
         return nil
     }
     
+    private func loadUserHandleAsChildIfNeeded() {
+        guard userHandleViewController.parent == nil else {
+            return
+        }
+        addChild(userHandleViewController)
+        view.insertSubview(userHandleViewController.view, belowSubview: inputWrapperView)
+        userHandleViewController.view.snp.makeConstraints { (make) in
+            make.top.equalTo(navigationBarView.snp.bottom)
+            make.leading.trailing.equalToSuperview()
+            make.bottom.equalTo(inputWrapperView.snp.top)
+        }
+        userHandleViewController.didMove(toParent: self)
+    }
+    
+    private func setUserHandleHidden(_ hidden: Bool) {
+        if hidden {
+            if userHandleViewController.isViewLoaded {
+                userHandleViewController.view.isHidden = true
+            }
+            inputWrapperTopShadowView.alpha = 0
+        } else {
+            loadUserHandleAsChildIfNeeded()
+            userHandleViewController.view.isHidden = false
+            inputWrapperTopShadowView.alpha = 1
+        }
+    }
+    
 }
 
 // MARK: - Helpers
@@ -1279,6 +1278,14 @@ extension ConversationViewController {
         
         updateAccessoryButtons(animated: false)
         conversationInputViewController.finishLoading()
+        if dataSource.category == .group {
+            let users = UserDAO.shared.getAppUsers(inConversationOf: conversationId)
+            userHandleViewController.users = users
+            let keyword: String = conversationInputViewController.textView.text
+            userHandleViewController.reload(with: keyword) { (hasContent) in
+                self.setUserHandleHidden(!hasContent)
+            }
+        }
         hideLoading()
     }
     
@@ -1307,7 +1314,26 @@ extension ConversationViewController {
         loadingView.stopAnimating()
         titleStackView.isHidden = false
     }
-    
+
+    private func openAction(action: String) {
+        guard !action.isEmpty else {
+            return
+        }
+        guard action.hasPrefix("input:"), action.count > 6 else {
+            if let url = URL(string: action) {
+                open(url: url)
+            }
+            return
+        }
+
+        let inputAction = String(action.suffix(action.count - 6))
+        if !inputAction.isEmpty {
+            dataSource.sendMessage(type: .SIGNAL_TEXT,
+                                   quoteMessageId: nil,
+                                   value: inputAction)
+        }
+    }
+
     private func open(url: URL) {
         guard !UrlWindow.checkUrl(url: url, checkLastWindow: false) else {
             return
@@ -1360,6 +1386,49 @@ extension ConversationViewController {
                 }
             }
         }
+    }
+    
+    private func deleteForMe(viewModel: MessageViewModel) {
+        let message = viewModel.message
+        if viewModel.message.messageId == AudioManager.shared.playingMessage?.messageId {
+            AudioManager.shared.stop()
+        }
+        dataSource?.queue.async { [weak self] in
+            guard let weakSelf = self, let indexPath = weakSelf.dataSource.indexPath(where: { $0.messageId == message.messageId }) else {
+                return
+            }
+            (viewModel as? AttachmentLoadingViewModel)?.cancelAttachmentLoading(isTriggeredByUser: true)
+            if MessageDAO.shared.deleteMessage(id: message.messageId) {
+                ReceiveMessageService.shared.stopRecallMessage(messageId: message.messageId, category: message.category, conversationId: message.conversationId, mediaUrl: message.mediaUrl)
+            }
+            DispatchQueue.main.sync {
+                _ = weakSelf.dataSource?.removeViewModel(at: indexPath)
+                weakSelf.tableView.reloadData()
+                weakSelf.tableView.setFloatingHeaderViewsHidden(true, animated: true)
+            }
+        }
+    }
+    
+    private func deleteForEveryone(viewModel: MessageViewModel) {
+        let message = viewModel.message
+        if viewModel.message.messageId == AudioManager.shared.playingMessage?.messageId {
+            AudioManager.shared.stop()
+        }
+        (viewModel as? AttachmentLoadingViewModel)?.cancelAttachmentLoading(isTriggeredByUser: true)
+        SendMessageService.shared.recallMessage(messageId: message.messageId, category: message.category, mediaUrl: message.mediaUrl, conversationId: message.conversationId, status: message.status, sendToSession: true)
+    }
+
+    private func showRecallTips(viewModel: MessageViewModel) {
+        let alc = UIAlertController(title: R.string.localizable.chat_delete_tip(), message: "", preferredStyle: .alert)
+        alc.addAction(UIAlertAction(title: R.string.localizable.action_learn_more(), style: .default, handler: { (_) in
+            CommonUserDefault.shared.isRecallTips = true
+            UIApplication.shared.openURL(url: "https://mixinmessenger.zendesk.com/hc/articles/360028209571")
+        }))
+        alc.addAction(UIAlertAction(title: Localized.DIALOG_BUTTON_OK, style: .default, handler: { (_) in
+            CommonUserDefault.shared.isRecallTips = true
+            self.deleteForEveryone(viewModel: viewModel)
+        }))
+        present(alc, animated: true, completion: nil)
     }
     
     private func reloadWithMessageIdAndBlinkTheCell(_ messageId: String, upwards: Bool) {
