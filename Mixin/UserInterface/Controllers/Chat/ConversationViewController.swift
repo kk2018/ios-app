@@ -1414,7 +1414,7 @@ extension ConversationViewController {
         guard let mediaUrl = message.mediaUrl else {
             return
         }
-        let url = MixinFile.url(ofChatDirectory: .files, filename: mediaUrl)
+        let url = AttachmentContainer.url(for: .files, filename: mediaUrl)
         guard FileManager.default.fileExists(atPath: url.path)  else {
             return
         }
@@ -1501,7 +1501,7 @@ extension ConversationViewController {
             guard let developUser = user, let url = FileManager.default.exportLog(conversationId: conversationId) else {
                 return
             }
-            let targetUrl = MixinFile.url(ofChatDirectory: .files, filename: url.lastPathComponent)
+            let targetUrl = AttachmentContainer.url(for: .files, filename: url.lastPathComponent)
             do {
                 try FileManager.default.copyItem(at: url, to: targetUrl)
                 try FileManager.default.removeItem(at: url)
