@@ -201,7 +201,7 @@ class ProfileViewController: UIViewController {
         
         self.menuItemGroups = groups
         for group in groups {
-            let stackView = UIStackView()
+            let stackView = ProfileMenuItemGroupStackView()
             stackView.axis = .vertical
             for (index, item) in group.enumerated() {
                 let view = dequeueReusableMenuItemView()
