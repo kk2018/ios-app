@@ -454,8 +454,8 @@ class ConversationViewController: UIViewController {
                 }
             } else if message.category.hasSuffix("_CONTACT"), let shareUserId = message.sharedUserId {
                 conversationInputViewController.dismiss()
-                if shareUserId == AccountAPI.shared.accountUserId {
-                    guard let account = AccountAPI.shared.account else {
+                if shareUserId == myUserId {
+                    guard let account = Account.current else {
                         return
                     }
                     let user = UserItem.createUser(from: account)
@@ -665,7 +665,7 @@ class ConversationViewController: UIViewController {
             return
         }
         let viewController: UIViewController
-        if AccountAPI.shared.account?.has_pin ?? false {
+        if Account.current?.has_pin ?? false {
             viewController = TransferOutViewController.instance(asset: nil, type: .contact(user))
         } else {
             viewController = WalletPasswordViewController.instance(dismissTarget: .transfer(user: user))
@@ -721,7 +721,7 @@ class ConversationViewController: UIViewController {
     class func instance(ownerUser: UserItem) -> ConversationViewController {
         let vc = Storyboard.chat.instantiateViewController(withIdentifier: "conversation") as! ConversationViewController
         vc.ownerUser = ownerUser
-        let conversationId = ConversationDAO.shared.makeConversationId(userId: AccountAPI.shared.accountUserId, ownerUserId: ownerUser.userId)
+        let conversationId = ConversationDAO.shared.makeConversationId(userId: myUserId, ownerUserId: ownerUser.userId)
         let conversation = ConversationDAO.shared.getConversation(conversationId: conversationId)
             ?? ConversationItem(ownerUser: ownerUser)
         vc.dataSource = ConversationDataSource(conversation: conversation)
@@ -1142,7 +1142,7 @@ extension ConversationViewController {
     private func updateSubtitleAndInputBar() {
         let conversationId = dataSource.conversationId
         dataSource.queue.async { [weak self] in
-            let isParticipant = ParticipantDAO.shared.userId(AccountAPI.shared.accountUserId, isParticipantOfConversationId: conversationId)
+            let isParticipant = ParticipantDAO.shared.userId(myUserId, isParticipantOfConversationId: conversationId)
             if isParticipant {
                 let count = ParticipantDAO.shared.getParticipantCount(conversationId: conversationId)
                 DispatchQueue.main.sync {
@@ -1275,7 +1275,7 @@ extension ConversationViewController {
         let conversationId = self.conversationId
         DispatchQueue.global().async { [weak self] in
             let isInvitedByStranger: Bool
-            let myInvitation = MessageDAO.shared.getInvitationMessage(conversationId: conversationId, inviteeUserId: AccountAPI.shared.accountUserId)
+            let myInvitation = MessageDAO.shared.getInvitationMessage(conversationId: conversationId, inviteeUserId: myUserId)
             if let inviterId = myInvitation?.userId, !MessageDAO.shared.hasSentMessage(inConversationOf: conversationId), let inviter = UserDAO.shared.getUser(userId: inviterId), inviter.relationship != Relationship.FRIEND.rawValue {
                 isInvitedByStranger = true
             } else {
@@ -1489,7 +1489,7 @@ extension ConversationViewController {
     
     private func report(conversationId: String) {
         DispatchQueue.global().async { [weak self] in
-            let developID = AccountAPI.shared.accountIdentityNumber == "762532" ? "31911" : "762532"
+            let developID = myIdentityNumber == "762532" ? "31911" : "762532"
             var user = UserDAO.shared.getUser(identityNumber: developID)
             if user == nil {
                 switch UserAPI.shared.search(keyword: developID) {
@@ -1514,8 +1514,8 @@ extension ConversationViewController {
                 return
             }
             
-            let developConversationId = ConversationDAO.shared.makeConversationId(userId: AccountAPI.shared.accountUserId, ownerUserId: developUser.userId)
-            var message = Message.createMessage(category: MessageCategory.PLAIN_DATA.rawValue, conversationId: developConversationId, userId: AccountAPI.shared.accountUserId)
+            let developConversationId = ConversationDAO.shared.makeConversationId(userId: myUserId, ownerUserId: developUser.userId)
+            var message = Message.createMessage(category: MessageCategory.PLAIN_DATA.rawValue, conversationId: developConversationId, userId: myUserId)
             message.name = url.lastPathComponent
             message.mediaSize = FileManager.default.fileSize(targetUrl.path)
             message.mediaMimeType = FileManager.default.mimeType(ext: url.pathExtension)
