@@ -1,9 +1,9 @@
 import WCDBSwift
 
-struct App: BaseCodable {
-
+public struct App: BaseCodable {
+    
     static var tableName: String = "apps"
-
+    
     let appId: String
     let appNumber: String
     let redirectUri: String
@@ -13,9 +13,9 @@ struct App: BaseCodable {
     let appSecret: String
     let homeUri: String
     let creatorId: String
-
-    enum CodingKeys: String, CodingTableKey {
-        typealias Root = App
+    
+    public enum CodingKeys: String, CodingTableKey {
+        public typealias Root = App
         case appId = "app_id"
         case appNumber = "app_number"
         case redirectUri = "redirect_uri"
@@ -25,12 +25,13 @@ struct App: BaseCodable {
         case appSecret = "app_secret"
         case homeUri = "home_uri"
         case creatorId = "creator_id"
-
-        static let objectRelationalMapping = TableBinding(CodingKeys.self)
-        static var columnConstraintBindings: [CodingKeys: ColumnConstraintBinding]? {
+        
+        public static let objectRelationalMapping = TableBinding(CodingKeys.self)
+        public static var columnConstraintBindings: [CodingKeys: ColumnConstraintBinding]? {
             return [
                 appId: ColumnConstraintBinding(isPrimary: true)
             ]
         }
     }
+    
 }
