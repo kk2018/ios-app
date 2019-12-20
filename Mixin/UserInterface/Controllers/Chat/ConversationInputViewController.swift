@@ -646,7 +646,7 @@ extension ConversationInputViewController {
     }
     
     private func loadFavoriteApps(ownerUser: UserItem) {
-        guard let account = Account.current else {
+        guard let account = LoginManager.shared.account else {
             return
         }
         
