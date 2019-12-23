@@ -4,15 +4,15 @@ public struct App: BaseCodable {
     
     static var tableName: String = "apps"
     
-    let appId: String
-    let appNumber: String
-    let redirectUri: String
-    let name: String
-    let iconUrl: String
-    var capabilities: [String]?
-    let appSecret: String
-    let homeUri: String
-    let creatorId: String
+    public let appId: String
+    public let appNumber: String
+    public let redirectUri: String
+    public let name: String
+    public let iconUrl: String
+    public var capabilities: [String]?
+    public let appSecret: String
+    public let homeUri: String
+    public let creatorId: String
     
     public enum CodingKeys: String, CodingTableKey {
         public typealias Root = App
